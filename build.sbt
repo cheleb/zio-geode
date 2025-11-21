@@ -1,15 +1,50 @@
+import sbt.TestFramework
+
 val scala3Version = "3.7.4"
+
+inThisBuild(
+  Seq(
+    scalaVersion := scala3Version,
+    version := "0.1.0-SNAPSHOT",
+    organization := "dev.cheleb"
+  )
+)
 
 lazy val root = project
   .in(file("."))
-  .aggregate(core)
+  .aggregate(core, forkedTests)
 
 lazy val core = coreProject("zio-geode", "core")
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % "2.1.22",
-      "org.apache.geode" % "geode-core" % "1.15.2"
-    )
+      "dev.zio" %% "zio-config" % "4.0.2",
+      "dev.zio" %% "zio-config-magnolia" % "4.0.2",
+      "dev.zio" %% "zio-config-typesafe" % "4.0.2",
+      "org.apache.geode" % "geode-core" % "1.15.2",
+      "org.slf4j" % "log4j-over-slf4j" % "2.0.16" % Test,
+      "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
+      "ch.qos.logback" % "logback-classic" % "1.5.12" % Test,
+      "dev.zio" %% "zio-test" % "2.1.22" % Test,
+      "dev.zio" %% "zio-test-sbt" % "2.1.22" % Test
+    ),
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+    Test / fork := true
   )
+
+lazy val forkedTests = coreProject("zio-geode-forked-tests", "forked-tests")
+  .dependsOn(core)
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.slf4j" % "log4j-over-slf4j" % "2.0.16" % Test,
+      "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
+      "ch.qos.logback" % "logback-classic" % "1.5.12" % Test,
+      "dev.zio" %% "zio-test" % "2.1.22" % Test,
+      "dev.zio" %% "zio-test-sbt" % "2.1.22" % Test
+    ),
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
+    //   Test / fork := true
+  )
+
 def coreProject(projectId: String, folder: String) =
   Project(id = projectId, base = file("modules/" + folder))

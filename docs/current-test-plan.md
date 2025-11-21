@@ -7,6 +7,7 @@ Unit tests isolate individual components using mocks and ZIO Test's testing util
 - **Flow**: Load config from source, call validate method.
 - **Behavior**: Valid config returns ValidConfig; invalid locator formats, missing fields, or logical errors (e.g., min > max connections) return ConfigError. SSL enabled without paths fails. Roundtrip: validated config creates client successfully.
 - **Edge Cases**: Non-numeric ports, invalid hosts, keystore file not found, pool constraints violated.
+- **Detailed Test Cases**: See [docs/test-task-1.md](test-task-1.md) for comprehensive test specifications.
 
 **Test Case: Client Lifecycle**
 - **Flow**: Provide ValidConfig to layer, access GeodeClient.
