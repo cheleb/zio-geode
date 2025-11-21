@@ -1,0 +1,22 @@
+ZIO-Geode is a Scala library that provides a functional, effect-based connector for Apache Geode, enabling developers to perform distributed data operations within ZIO programs. In common scenarios, such as building microservices that require high-performance caching or shared data across distributed nodes, developers can seamlessly integrate Geode's in-memory data grid capabilities with ZIO's composable effects for asynchronous, type-safe data access, querying, and management, all while benefiting from ZIO's robust error handling and concurrency model.
+
+The product supports a range of user flows centered around interacting with Geode regions and data in a functional manner. A typical user flow begins with configuring a Geode client through ZIO layers, which allows for dependency injection and resource management. Developers can then create or access regions, perform basic CRUD operations like putting, getting, or removing data entries, all wrapped in ZIO effects that handle asynchronous execution and potential failures gracefully. For querying, users can execute OQL queries asynchronously, with results processed in a streaming or batched manner depending on the use case. Region management includes creating and destroying regions, as well as handling events such as entry updates or expirations, integrated into ZIO's event-driven programming style. Advanced flows incorporate streaming support for continuous queries, enabling real-time data processing where data changes trigger ZIO-based computations. Transaction management allows grouping multiple operations into atomic transactions, leveraging ZIO's transactional capabilities to ensure consistency across distributed nodes. Error recovery mechanisms, such as automatic retries for transient failures, are built-in to handle network issues or node unavailability in distributed environments. Monitoring and metrics hooks provide insights into performance, with ZIO effects exposing metrics for integration into broader application observability systems. Throughout these flows, the API remains fluent and type-safe, minimizing boilerplate and aligning with ZIO idioms, while configuration is kept simple through layer-based setup.
+
+In terms of usability, ZIO-Geode offers an intuitive experience for Scala developers familiar with functional programming and ZIO. The API is designed to feel natural within ZIO applications, with operations returning effects that compose easily with other ZIO constructs, reducing the cognitive load of bridging imperative Geode APIs. Error handling is comprehensive, mapping Geode-specific exceptions to ZIO failures for predictable and recoverable error propagation. Configuration via ZIO layers promotes clean architecture, allowing clients to be injected and managed as part of the application's effect environment. Documentation includes practical examples for common patterns, such as setting up a client, performing queries, and handling streams, along with integration guides for microservices. Overall, the connector enhances productivity by abstracting Geode's complexities into a functional interface, making distributed data management more accessible and reliable for ZIO-based systems.
+
+Decisions:
+- Focus on client-side operations for Geode, excluding server-side management to keep the scope manageable.
+- Prioritize ZIO 2.x and Geode 1.15.x+ for modern compatibility, avoiding legacy support.
+- No support for deprecated Geode features or legacy APIs.
+- Primarily for JVM-based Scala applications, with potential for Scala.js if needed.
+- Include advanced features like streaming and transactions as core offerings to differentiate from basic wrappers.
+- Use ZIO layers for configuration to align with ZIO best practices and enable easy testing.
+- Utilize latest stable versions: Scala 3.7.4, ZIO 2.1.22, Apache Geode 1.15.2.
+- Support SSL/TLS for encrypted connections to handle authentication and security for Geode connections.
+- No specific performance benchmarks or SLAs defined; focus on Geode's native performance.
+- No support for Geode's WAN replication or persistence features; keep scope to client-side operations only.
+- No compatibility with Geode's Java API; maintain a purely functional interface for migration ease.
+- Focus on robust error handling with ZIO's failure types for Geode exceptions.
+- Implement streaming with ZIO streams for continuous queries.
+- Ensure thread-safety for concurrent operations using ZIO's concurrency primitives.
+- Optimize for large datasets with pagination and batching in queries.
