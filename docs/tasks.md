@@ -20,7 +20,9 @@
 **Behavior**: Exposes a `GeodeClient` service with access to the underlying ClientCache. The layer takes a ValidConfig and returns ZLayer[Any, GeodeError, GeodeClient], where GeodeError maps Geode exceptions. Client creation connects to locators, applies auth and SSL if configured.
 **Requirements**:
 * ClientCache created with provided config.
-* Proper resource management: ClientCache closed on layer shutdown.
+* Proper resource management:
+ * ClientCache closed on layer shutdown, but not thread safe (only one instance on ClientCache is allowed per JVM).
+ * ClientCache is created only once per JVM.
 * Error handling: Map Geode exceptions (e.g., AuthenticationFailedException) to custom GeodeError types.
 * Thread-safe and suitable for concurrent access.
 * No direct exposure of ClientCache; all operations through the service.
