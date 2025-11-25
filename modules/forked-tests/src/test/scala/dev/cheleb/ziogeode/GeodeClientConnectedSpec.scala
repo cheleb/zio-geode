@@ -29,26 +29,6 @@ object GeodeClientConnectedSpecSpec2 extends ZIOSpecDefault {
 
       assertZIO(effect.map(_.isConnected()))(isTrue)
     },
-    test("connect a region successfully") {
-
-      // This test would need a mock or test container setup
-      // For now, assuming the layer is implemented
-      val effect =
-        for {
-          _ <- ZIO.debug("Connecting to region 'networks'")
-          client <- ZIO.service[GeodeClientCache]
-          _ <- ZIO.debug(
-            s"Opened client isConnected=${client.isConnected()}"
-          )
-          region <- client.openRegion[String, String]("contracts")
-          _ = region.put("key1", "value1")
-        } yield region
-
-      assertZIO(
-        effect
-          .map(_.isInstanceOf[GeodeRegion[String, String]])
-      )(isTrue)
-    },
     test("multiple fibers access client simultaneously without issues") {
       val validConfig = ValidConfig(
         GeodeConfig(

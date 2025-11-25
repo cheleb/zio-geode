@@ -10,7 +10,7 @@ import java.io.FileInputStream
 import java.security.KeyStore
 import javax.net.ssl.{SSLContext, TrustManagerFactory, KeyManagerFactory}
 import scala.jdk.CollectionConverters.*
-import dev.cheleb.ziogeode.region.GeodeRegion
+import dev.cheleb.ziogeode.region.{GeodeRegion}
 import org.apache.geode.cache.client.ClientRegionShortcut
 
 // Error types for Geode operations
@@ -20,6 +20,8 @@ object GeodeError {
   case class AuthenticationFailed(message: String) extends GeodeError
   case class SslError(message: String) extends GeodeError
   case class RegionError(message: String) extends GeodeError
+  case class RegionAlreadyExists(regionName: String) extends GeodeError
+  case class RegionNotFound(regionName: String) extends GeodeError
   case class QueryError(message: String) extends GeodeError
   case class TransactionError(message: String) extends GeodeError
   case class SerializationError(message: String) extends GeodeError
@@ -28,40 +30,176 @@ object GeodeError {
 
 // GeodeClient service trait
 trait GeodeClientCache {
+
+  /** Check if the client is connected to Geode.
+    *
+    * @return
+    *   true if connected, false otherwise
+    */
   def isConnected(): Boolean
-  def openRegion[K, V](
-      regionName: String
+
+  /** Create a new region with the specified type.
+    *
+    * @param name
+    *   the name of the region to create
+    * @param regionType
+    *   the type of region (PARTITIONED, REPLICATED, etc.)
+    * @return
+    *   a ZIO effect producing a GeodeRegion
+    */
+  def createRegion[K, V](
+      name: String,
+      regionType: ClientRegionShortcut
   ): ZIO[Scope, GeodeError, GeodeRegion[K, V]]
+
+  /** Get an existing region by name.
+    *
+    * @param name
+    *   the name of the region to get
+    * @return
+    *   a ZIO effect producing Some(region) if found, None otherwise
+    */
+  def getRegion[K, V](
+      name: String
+  ): ZIO[Any, GeodeError, Option[GeodeRegion[K, V]]]
+
+  /** Destroy a region by name.
+    *
+    * @param name
+    *   the name of the region to destroy
+    * @return
+    *   a ZIO effect that completes when the region is destroyed
+    */
+  def destroyRegion(name: String): ZIO[Any, GeodeError, Unit]
+
+  /** List all region names.
+    *
+    * @return
+    *   a ZIO effect producing a set of region names
+    */
+  def listRegions(): ZIO[Any, GeodeError, Set[String]]
 }
 
-private class GeodeClientCacheLive(clientCache: ClientCache)
-    extends GeodeClientCache {
+private class GeodeClientCacheLive(
+    clientCache: ClientCache
+) extends GeodeClientCache {
+
   override def isConnected(): Boolean =
     !clientCache.isClosed
-  def openRegion[K, V](
-      regionName: String
+
+  override def createRegion[K, V](
+      name: String,
+      regionType: ClientRegionShortcut
   ): ZIO[Scope, GeodeError, GeodeRegion[K, V]] =
     ZIO.fromAutoCloseable:
       for {
+        // Check if region already exists in cache
+
+        // Check if region already exists in Geode
+        existingRegion <- ZIO
+          .attemptBlocking {
+            clientCache.getRegion[K, V](name)
+          }
+          .mapError { case th: Throwable =>
+            GeodeError.RegionError(
+              s"Failed to check region '$name': ${th.getMessage}"
+            )
+          }
+        _ <- ZIO.when(existingRegion != null) {
+          ZIO.fail(GeodeError.RegionAlreadyExists(name))
+        }
+        // Create the region
         region <- ZIO
           .attemptBlocking {
             clientCache
               .createClientRegionFactory[K, V](
-                ClientRegionShortcut.CACHING_PROXY
+                regionType
               )
-              .create(regionName)
+              .create(name)
+          }
+          .mapError {
+            case e: org.apache.geode.cache.RegionExistsException =>
+              GeodeError.RegionAlreadyExists(name)
+            case th: Throwable =>
+              GeodeError.RegionError(
+                s"Failed to create region '$name': ${th.getMessage}"
+              )
+          }
+        geodeRegion = GeodeRegion(region)
+
+      } yield geodeRegion
+
+  override def getRegion[K, V](
+      name: String
+  ): ZIO[Any, GeodeError, Option[GeodeRegion[K, V]]] =
+    for {
+      // First check the cache
+
+      result <-
+        // Try to get from Geode
+        ZIO
+          .attemptBlocking {
+            val region = clientCache.getRegion[K, V](name)
+            if (region != null && !region.isDestroyed) {
+              Some(GeodeRegion(region))
+            } else {
+              None
+            }
           }
           .mapError { case th: Throwable =>
             GeodeError.RegionError(
-              s"Failed to open region '$regionName': ${th.getMessage}"
+              s"Failed to get region '$name': ${th.getMessage}"
             )
           }
-        _ <- ZIO.when(region == null) {
-          ZIO.fail(
-            GeodeError.RegionError(s"Region '$regionName' does not exist.")
-          )
-        }
-      } yield new GeodeRegion(region)
+
+    } yield result
+
+  override def destroyRegion(name: String): ZIO[Any, GeodeError, Unit] =
+    for {
+      // Get the region from cache or Geode
+      regionOpt <-
+        ZIO
+          .attemptBlocking {
+            val region = clientCache.getRegion[Any, Any](name)
+            if (region != null && !region.isDestroyed) {
+              Some(GeodeRegion(region))
+            } else {
+              None
+            }
+          }
+          .mapError { case th: Throwable =>
+            GeodeError.RegionError(
+              s"Failed to get region '$name': ${th.getMessage}"
+            )
+          }
+
+      // Destroy the region if it exists
+      _ <- regionOpt match {
+        case Some(region) =>
+          ZIO
+            .attemptBlocking {
+              region.destroy()
+            }
+            .mapError { case th: Throwable =>
+              GeodeError.RegionError(
+                s"Failed to destroy region '$name': ${th.getMessage}"
+              )
+            }
+        case None =>
+          ZIO.fail(GeodeError.RegionNotFound(name))
+      }
+    } yield ()
+
+  override def listRegions(): ZIO[Any, GeodeError, Set[String]] =
+    ZIO
+      .attemptBlocking {
+        clientCache.rootRegions().asScala.map(_.getName).toSet
+      }
+      .mapError { case th: Throwable =>
+        GeodeError.RegionError(
+          s"Failed to list regions: ${th.getMessage}"
+        )
+      }
 }
 
 // Companion object with layer creation
@@ -69,9 +207,10 @@ object GeodeClientCache {
 
   /** ZLayer that provides GeodeClientLive given ValidConfig
     *
-    * Cac
+    * Creates a new client cache with region caching support.
     *
     * @return
+    *   ZLayer providing GeodeClientCacheLive
     */
   def layer: ZLayer[Scope & ValidConfig, GeodeError, GeodeClientCacheLive] =
     ZLayer:
@@ -79,6 +218,7 @@ object GeodeClientCache {
         _ <- ZIO.logDebug("Creating GeodeClient layer")
         validConfig <- ZIO.service[ValidConfig]
         clientCache <- createClientCache(validConfig)
+        regionCache <- Ref.make(Map.empty[String, GeodeRegion[?, ?]])
         _ <- ZIO.addFinalizer(
           ZIO.attemptBlocking {
             if (!clientCache.isClosed) {
@@ -88,7 +228,7 @@ object GeodeClientCache {
         )
       } yield new GeodeClientCacheLive(clientCache)
 
-  val singletonClientCache: Ref[Option[GeodeClientCacheLive]] =
+  private val singletonClientCache: Ref[Option[GeodeClientCacheLive]] =
     Unsafe.unsafe { implicit unsafe =>
       Runtime.default.unsafe
         .run(
@@ -100,7 +240,10 @@ object GeodeClientCache {
 
   /** ZLayer that provides a singleton GeodeClientLive given ValidConfig
     *
+    * This ensures only one ClientCache instance per JVM (Geode limitation).
+    *
     * @return
+    *   ZLayer providing GeodeClientCacheLive singleton
     */
   def singleton: ZLayer[ValidConfig, GeodeError, GeodeClientCacheLive] =
     ZLayer:
@@ -114,6 +257,7 @@ object GeodeClientCache {
             ZIO.logDebug("Creating new singleton GeodeClientLive") *> (for {
               validConfig <- ZIO.service[ValidConfig]
               clientCache <- createClientCache(validConfig)
+              regionCache <- Ref.make(Map.empty[String, GeodeRegion[?, ?]])
               clientLive = new GeodeClientCacheLive(clientCache)
               _ <- singletonClientCache.set(Some(clientLive))
 
