@@ -1,6 +1,8 @@
 package dev.cheleb.ziogeode.region
 
 import org.apache.geode.cache.Region
+import zio._
+import dev.cheleb.ziogeode.client.GeodeError
 
 import scala.jdk.CollectionConverters.*
 
@@ -26,10 +28,17 @@ class GeodeRegion[K, V](region: Region[K, V], val regionName: String)
     * @param key
     *   the key to retrieve
     * @return
-    *   Some(value) if found, None otherwise
+    *   ZIO effect that succeeds with Some(value) if found, None otherwise
     */
-  def get(key: K): Option[V] =
-    Option(region.get(key))
+  def get(key: K): ZIO[Any, GeodeError, Option[V]] =
+    ZIO
+      .attemptBlocking(Option(region.get(key)))
+      .mapError(th =>
+        GeodeError.GenericError(
+          s"Failed to get key '$key' from region '$regionName'",
+          th
+        )
+      )
 
   /** Put a key-value pair into the region.
     *
@@ -37,19 +46,35 @@ class GeodeRegion[K, V](region: Region[K, V], val regionName: String)
     *   the key
     * @param value
     *   the value
+    * @return
+    *   ZIO effect that succeeds when the put is complete
     */
-  def put(key: K, value: V): Unit =
-    region.put(key, value)
+  def put(key: K, value: V): ZIO[Any, GeodeError, Unit] =
+    ZIO
+      .attemptBlocking(region.put(key, value))
+      .mapError(th =>
+        GeodeError
+          .GenericError(s"Failed to put key '$key' in region '$regionName'", th)
+      )
+      .unit
 
   /** Remove an entry by key.
     *
     * @param key
     *   the key to remove
     * @return
-    *   true if the entry existed and was removed, false otherwise
+    *   ZIO effect that succeeds with true if the entry existed and was removed,
+    *   false otherwise
     */
-  def remove(key: K): Boolean =
-    region.remove(key) != null
+  def remove(key: K): ZIO[Any, GeodeError, Boolean] =
+    ZIO
+      .attemptBlocking(region.remove(key) != null)
+      .mapError(th =>
+        GeodeError.GenericError(
+          s"Failed to remove key '$key' from region '$regionName'",
+          th
+        )
+      )
 
   /** Check if a key exists in the region.
     *

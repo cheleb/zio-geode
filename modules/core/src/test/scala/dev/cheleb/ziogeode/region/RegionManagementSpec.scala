@@ -57,8 +57,8 @@ object RegionManagementSpec extends ZIOSpecDefault {
               ClientRegionShortcut.LOCAL
             )
             _ <- ZIO.debug(s"Created region: ${region.name}")
-            _ = region.put("key1", 42)
-            value = region.get("key1")
+            _ <- region.put("key1", 42)
+            value <- region.get("key1")
             name = region.name
           } yield assertTrue(
             name == regionName,
@@ -115,47 +115,32 @@ object RegionManagementSpec extends ZIOSpecDefault {
               ClientRegionShortcut.LOCAL
             )
             // Put
-            _ = region.put("key1", "value1")
-            _ = region.put("key2", "value2")
-            // Get - evaluate eagerly
-            v1 = region.get("key1")
-            v2 = region.get("key2")
+            _ <- region.put("key1", "value1")
+            _ <- region.put("key2", "value2")
+            // Get
+            v1 <- region.get("key1")
+            v2 <- region.get("key2")
             // Check exists
             exists1 = region.containsKey("key1")
             exists3 = region.containsKey("key3")
             // Size
             size = region.size
             // Remove
-            removed = region.remove("key1")
-            notRemoved = region.remove("nonexistent")
+            removed <- region.remove("key1")
+            notRemoved <- region.remove("nonexistent")
             sizeAfter = region.size
-            v1After = region.get("key1")
-            // Store results to return after scope
-            results = (
-              v1,
-              v2,
-              exists1,
-              exists3,
-              size,
-              removed,
-              notRemoved,
-              sizeAfter,
-              v1After
-            )
-          } yield {
-            val (r1, r2, e1, e3, s, rm, nrm, sa, v1a) = results
-            assertTrue(
-              r1 == Some("value1"),
-              r2 == Some("value2"),
-              e1,
-              !e3,
-              s == 2,
-              rm,
-              !nrm,
-              sa == 1,
-              v1a.isEmpty
-            )
-          }
+            v1After <- region.get("key1")
+          } yield assertTrue(
+            v1 == Some("value1"),
+            v2 == Some("value2"),
+            exists1,
+            !exists3,
+            size == 2,
+            removed,
+            !notRemoved,
+            sizeAfter == 1,
+            v1After.isEmpty
+          )
       },
       test("list regions returns created regions") {
         val regionName1 = s"test-list-region-1-${java.util.UUID.randomUUID()}"
@@ -236,8 +221,8 @@ object RegionManagementSpec extends ZIOSpecDefault {
               regionName,
               ClientRegionShortcut.LOCAL
             )
-            _ = region.put("key", "value")
-            getValue = region.get("key")
+            _ <- region.put("key", "value")
+            getValue <- region.get("key")
             // Destroy through client
             _ <- client.destroyRegion(regionName)
             // Verify region is destroyed
@@ -326,6 +311,7 @@ object RegionManagementSpec extends ZIOSpecDefault {
             )
             _ = region.put("key1", "value1")
             _ = region.put("key2", "value2")
+
             sizeBefore = region.size
             _ = region.clear()
             sizeAfter = region.size
