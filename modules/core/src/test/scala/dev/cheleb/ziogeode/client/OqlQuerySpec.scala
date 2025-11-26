@@ -63,8 +63,7 @@ object OqlQuerySpec extends ZIOSpecDefault {
             _ <- region.put("aa", 1)
             _ <- region.put("bb", 2)
             results <- client.executeQueryCollect[Int](
-              s"SELECT * FROM /$regionName",
-              Map.empty
+              s"SELECT * FROM /$regionName"
             )
             sortedResults = results.sorted
           } yield assertTrue(sortedResults == Chunk(1, 2))
@@ -96,7 +95,7 @@ object OqlQuerySpec extends ZIOSpecDefault {
         for {
           client <- ZIO.service[GeodeClientCache]
           result <- client
-            .executeQueryCollect[String]("INVALID QUERY SYNTAX", Map.empty)
+            .executeQueryCollect[String]("INVALID QUERY SYNTAX")
             .either
           isLeft = result.isLeft
           isQueryError = result.left.exists {
@@ -110,8 +109,7 @@ object OqlQuerySpec extends ZIOSpecDefault {
           client <- ZIO.service[GeodeClientCache]
           result <- client
             .executeQueryCollect[String](
-              "SELECT * FROM /nonexistent-region-123",
-              Map.empty
+              "SELECT * FROM /nonexistent-region-123"
             )
             .either
           isLeft = result.isLeft
@@ -132,8 +130,7 @@ object OqlQuerySpec extends ZIOSpecDefault {
               ClientRegionShortcut.CACHING_PROXY
             )
             results <- client.executeQueryCollect[Int](
-              s"SELECT * FROM /$regionName WHERE value > 100",
-              Map.empty
+              s"SELECT * FROM /$regionName WHERE value > 100"
             )
             isEmpty = results.isEmpty
           } yield assertTrue(isEmpty)

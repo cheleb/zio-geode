@@ -106,7 +106,7 @@ trait GeodeClientCache {
     */
   def executeQueryCollect[T](
       query: String,
-      params: Map[String, Any]
+      params: Any*
   ): ZIO[Any, GeodeError, Chunk[T]]
 }
 
@@ -257,14 +257,14 @@ private class GeodeClientCacheLive(
 
   override def executeQueryCollect[T](
       query: String,
-      params: Map[String, Any]
+      params: Any*
   ): ZIO[Any, GeodeError, Chunk[T]] =
     ZIO
       .attemptBlocking {
         val queryService = clientCache.getQueryService()
         val q = queryService.newQuery(query)
         val results =
-          q.execute(params.values.toArray).asInstanceOf[SelectResults[T]]
+          q.execute(params*).asInstanceOf[SelectResults[T]]
         Chunk.fromIterable(results.asScala)
       }
       .mapError {
