@@ -1,11 +1,13 @@
-package dev.cheleb.ziogeode.client
+package dev.cheleb.ziogeode
 
 import zio._
 import zio.test._
 import zio.test.Assertion._
 import zio.test.TestAspect._
 import dev.cheleb.ziogeode.config._
+import dev.cheleb.ziogeode.client.*
 
+/** Tests for [[GeodeClientCache]] lifecycle management. */
 object GeodeClientSpec extends ZIOSpecDefault {
 
   def spec: Spec[Any, Any] = suite("GeodeClient lifecycle management")(

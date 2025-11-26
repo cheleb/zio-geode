@@ -88,7 +88,7 @@ object RegionManagementSpec extends ZIOSpecDefault {
               regionName,
               ClientRegionShortcut.LOCAL
             )
-            _ = region.put("key", "value")
+            _ <- region.put("key", "value")
             // Verify it exists
             existsBefore <- client.getRegion[String, String](regionName)
             hasValueBefore = existsBefore.isDefined
@@ -268,7 +268,7 @@ object RegionManagementSpec extends ZIOSpecDefault {
               regionName,
               ClientRegionShortcut.LOCAL
             )
-            _ = region.put("key", "value")
+            _ <- region.put("key", "value")
             results <- ZIO.foreachPar(1 to 10) { _ =>
               client.getRegion[String, String](regionName)
             }
@@ -309,8 +309,8 @@ object RegionManagementSpec extends ZIOSpecDefault {
               regionName,
               ClientRegionShortcut.LOCAL
             )
-            _ = region.put("key1", "value1")
-            _ = region.put("key2", "value2")
+            _ <- region.put("key1", "value1")
+            _ <- region.put("key2", "value2")
 
             sizeBefore = region.size
             _ = region.clear()
@@ -331,9 +331,9 @@ object RegionManagementSpec extends ZIOSpecDefault {
               regionName,
               ClientRegionShortcut.LOCAL
             )
-            _ = region.put("x", 1)
-            _ = region.put("y", 2)
-            _ = region.put("z", 3)
+            _ <- region.put("x", 1)
+            _ <- region.put("y", 2)
+            _ <- region.put("z", 3)
             keys = region.keySet
             keysMatch = keys == Set("x", "y", "z")
           } yield assertTrue(keysMatch)
