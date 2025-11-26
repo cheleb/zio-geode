@@ -1,6 +1,7 @@
 package dev.cheleb.ziogeode.client
 
 import zio._
+import zio.stream.ZStream
 import org.apache.geode.cache.client.{ClientCache, ClientCacheFactory}
 import org.apache.geode.cache.{Region, GemFireCache}
 import dev.cheleb.ziogeode.config.ValidConfig
@@ -12,6 +13,7 @@ import javax.net.ssl.{SSLContext, TrustManagerFactory, KeyManagerFactory}
 import scala.jdk.CollectionConverters.*
 import dev.cheleb.ziogeode.region.{GeodeRegion}
 import org.apache.geode.cache.client.ClientRegionShortcut
+import org.apache.geode.cache.query.{Query, QueryService, SelectResults}
 
 // Error types for Geode operations
 sealed trait GeodeError
@@ -78,6 +80,34 @@ trait GeodeClientCache {
     *   a ZIO effect producing a set of region names
     */
   def listRegions(): ZIO[Any, GeodeError, Set[String]]
+
+  /** Execute an OQL query and return results as a stream.
+    *
+    * @param query
+    *   the OQL query string
+    * @param params
+    *   parameters for the query
+    * @return
+    *   ZIO effect producing a stream of results
+    */
+  def executeQuery[T](
+      query: String,
+      params: Any*
+  ): ZIO[Any, GeodeError, ZStream[Any, Nothing, T]]
+
+  /** Execute an OQL query and collect all results into a Chunk.
+    *
+    * @param query
+    *   the OQL query string
+    * @param params
+    *   parameters for the query
+    * @return
+    *   ZIO effect producing a Chunk of results
+    */
+  def executeQueryCollect[T](
+      query: String,
+      params: Map[String, Any]
+  ): ZIO[Any, GeodeError, Chunk[T]]
 }
 
 private class GeodeClientCacheLive(
@@ -199,6 +229,51 @@ private class GeodeClientCacheLive(
         GeodeError.RegionError(
           s"Failed to list regions: ${th.getMessage}"
         )
+      }
+
+  override def executeQuery[T](
+      query: String,
+      params: Any*
+  ): ZIO[Any, GeodeError, ZStream[Any, Nothing, T]] =
+    ZIO
+      .attemptBlocking {
+        val queryService = clientCache.getQueryService()
+        val q = queryService.newQuery(query)
+        val results =
+          q.execute(params*).asInstanceOf[SelectResults[T]]
+        results
+      }
+      .map { results =>
+        ZStream.fromIterable(results.asScala, chunkSize = 1000)
+      }
+      .mapError {
+        case e: org.apache.geode.cache.query.QueryInvalidException =>
+          GeodeError.QueryError(s"Invalid query: ${e.getMessage}")
+        case e: org.apache.geode.cache.query.QueryException =>
+          GeodeError.QueryError(s"Query execution failed: ${e.getMessage}")
+        case th: Throwable =>
+          GeodeError.QueryError(s"Query failed: ${th.getMessage}")
+      }
+
+  override def executeQueryCollect[T](
+      query: String,
+      params: Map[String, Any]
+  ): ZIO[Any, GeodeError, Chunk[T]] =
+    ZIO
+      .attemptBlocking {
+        val queryService = clientCache.getQueryService()
+        val q = queryService.newQuery(query)
+        val results =
+          q.execute(params.values.toArray).asInstanceOf[SelectResults[T]]
+        Chunk.fromIterable(results.asScala)
+      }
+      .mapError {
+        case e: org.apache.geode.cache.query.QueryInvalidException =>
+          GeodeError.QueryError(s"Invalid query: ${e.getMessage}")
+        case e: org.apache.geode.cache.query.QueryException =>
+          GeodeError.QueryError(s"Query execution failed: ${e.getMessage}")
+        case th: Throwable =>
+          GeodeError.QueryError(s"Query failed: ${th.getMessage}")
       }
 }
 
