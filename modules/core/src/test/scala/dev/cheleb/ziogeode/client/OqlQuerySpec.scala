@@ -56,17 +56,17 @@ object OqlQuerySpec extends ZIOSpecDefault {
         ZIO.scoped:
           for {
             client <- ZIO.service[GeodeClientCache]
-            region <- client.createRegion[String, Int](
+            region <- client.createRegion[String, String](
               regionName,
               ClientRegionShortcut.CACHING_PROXY
             )
-            _ <- region.put("aa", 1)
-            _ <- region.put("bb", 2)
-            results <- client.executeQueryCollect[Int](
+            _ <- region.put("a", "apple")
+            _ <- region.put("b", "banana")
+            results <- client.executeQueryCollect[String](
               s"SELECT * FROM /$regionName"
             )
             sortedResults = results.sorted
-          } yield assertTrue(sortedResults == Chunk(1, 2))
+          } yield assertTrue(sortedResults == Chunk("apple", "banana"))
       },
       test("parameterized query works correctly") {
         val regionName =
