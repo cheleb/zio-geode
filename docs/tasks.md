@@ -64,7 +64,7 @@
 **Task 5**: Implement OQL query execution
 **Description**: Provide functionality to execute Object Query Language (OQL) queries on Geode regions, returning results as ZIO streams or collections.
 **Purpose**: To enable querying data in regions using Geode's query language for complex data retrieval.
-**Behavior**: GeodeClient includes `executeQuery[T](query: String, params: Map[String, Any]): ZIO[GeodeClient, GeodeError, ZStream[Any, GeodeError, T]]` for streaming results, or `executeQueryCollect[T](query: String, params: Map[String, Any]): ZIO[GeodeClient, GeodeError, Chunk[T]]` for batched. Supports parameterized queries.
+**Behavior**: GeodeClient includes `executeQuery[T](query: String, params: Any*): ZIO[GeodeClient, GeodeError, ZStream[Any, GeodeError, T]]` for streaming results, or `executeQueryCollect[T](query: String, params: Any*): ZIO[GeodeClient, GeodeError, Chunk[T]]` for batched. Supports parameterized queries.
 **Requirements**:
 * Streaming results for large datasets to avoid memory issues.
 * Parameter binding for secure queries.
@@ -79,7 +79,7 @@
 **Task 6**: Implement continuous query streaming
 **Description**: Integrate Geode's continuous queries (CQ) with ZIO streams for real-time data change notifications.
 **Purpose**: To support event-driven programming where data changes in regions trigger computations in ZIO.
-**Behavior**: GeodeClient provides `continuousQuery[T](query: String, params: Map[String, Any]): ZManaged[GeodeClient, GeodeError, ZStream[Any, GeodeError, CqEvent[T]]]` where CqEvent represents create/update/destroy events with data. Stream runs until managed resource is released.
+**Behavior**: GeodeClient provides `continuousQuery[T](query: String, params: Any*): ZIO[GeodeClient, GeodeError, ZStream[Scope, GeodeError, CqEvent[T]]]` where CqEvent represents create/update/destroy events with data. Stream runs until managed resource is released.
 **Requirements**:
 * CQ registered and unregistered properly via ZManaged.
 * Events streamed as they occur.
