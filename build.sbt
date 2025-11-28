@@ -18,7 +18,7 @@ lazy val core = coreProject("zio-geode", "core")
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % "2.1.23",
-      "dev.zio" %% "zio-streams" % "2.1.22",
+      "dev.zio" %% "zio-streams" % "2.1.23",
       "dev.zio" %% "zio-config" % "4.0.6",
       "dev.zio" %% "zio-config-magnolia" % "4.0.6",
       "dev.zio" %% "zio-config-typesafe" % "4.0.6",
@@ -27,7 +27,7 @@ lazy val core = coreProject("zio-geode", "core")
       "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
       "ch.qos.logback" % "logback-classic" % "1.5.21" % Test,
       "dev.zio" %% "zio-test" % "2.1.22" % Test,
-      "dev.zio" %% "zio-test-sbt" % "2.1.22" % Test
+      "dev.zio" %% "zio-test-sbt" % "2.1.23" % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     Test / fork := true
@@ -41,7 +41,7 @@ lazy val forkedTests = coreProject("zio-geode-forked-tests", "forked-tests")
       "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
       "ch.qos.logback" % "logback-classic" % "1.5.21" % Test,
       "dev.zio" %% "zio-test" % "2.1.22" % Test,
-      "dev.zio" %% "zio-test-sbt" % "2.1.22" % Test
+      "dev.zio" %% "zio-test-sbt" % "2.1.23" % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
     //   Test / fork := true
