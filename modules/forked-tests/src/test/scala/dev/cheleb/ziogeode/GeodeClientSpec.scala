@@ -24,7 +24,7 @@ object GeodeClientSpec extends ZIOSpecDefault {
       val effect = ZIO
         .service[GeodeClientCache]
         .provide(
-          ZLayer.succeed(invalidConfig) >>> GeodeClientCache.singleton
+          ZLayer.succeed(invalidConfig) >>> GeodeClientCache.singleton()
         )
 
       // // val effect = ZIO.fail(new Exception("mock"))
@@ -44,7 +44,7 @@ object GeodeClientSpec extends ZIOSpecDefault {
       val effect = ZIO
         .service[GeodeClientCache]
         .provideLayer(
-          ZLayer.succeed(configWithBadAuth) >>> GeodeClientCache.singleton
+          ZLayer.succeed(configWithBadAuth) >>> GeodeClientCache.singleton()
         )
       assertZIO(effect.exit)(
         fails(isSubtype[GeodeError.AuthenticationFailed](anything))
@@ -66,7 +66,7 @@ object GeodeClientSpec extends ZIOSpecDefault {
       val effect = ZIO
         .service[GeodeClientCache]
         .provideLayer(
-          ZLayer.succeed(configWithBadSsl) >>> GeodeClientCache.singleton
+          ZLayer.succeed(configWithBadSsl) >>> GeodeClientCache.singleton()
         )
 
       assertZIO(effect.exit)(
@@ -92,7 +92,7 @@ object GeodeClientSpec extends ZIOSpecDefault {
 
         }
         .provideLayer(
-          ZLayer.succeed(validConfig) >>> GeodeClientCache.singleton
+          ZLayer.succeed(validConfig) >>> GeodeClientCache.singleton()
         )
 
       assertZIO(effect.exit)(succeeds(anything))

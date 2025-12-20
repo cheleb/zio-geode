@@ -164,6 +164,6 @@ object CrudOperationsSpec extends ZIOSpecDefault {
     )
   ).provide(
     ZLayer.succeed(validConfig),
-    GeodeClientCache.singleton
+    GeodeClientCache.singleton()
   ) @@ sequential
 }

@@ -13,7 +13,16 @@ import javax.net.ssl.{SSLContext, TrustManagerFactory, KeyManagerFactory}
 import scala.jdk.CollectionConverters.*
 import dev.cheleb.ziogeode.region.{GeodeRegion}
 import org.apache.geode.cache.client.ClientRegionShortcut
-import org.apache.geode.cache.query.{Query, QueryService, SelectResults}
+import org.apache.geode.cache.query.{
+  Query,
+  QueryService,
+  SelectResults,
+  CqQuery,
+  CqEvent as GeodeCqEvent,
+  CqListener,
+  CqAttributesFactory
+}
+import org.apache.geode.cache.{EntryEvent, Operation}
 
 // Error types for Geode operations
 sealed trait GeodeError
@@ -28,6 +37,14 @@ object GeodeError {
   case class TransactionError(message: String) extends GeodeError
   case class SerializationError(message: String) extends GeodeError
   case class GenericError(message: String, cause: Throwable) extends GeodeError
+}
+
+// CQ Event types
+sealed trait CqEvent[T]
+object CqEvent {
+  case class Created[T](key: Any, value: T) extends CqEvent[T]
+  case class Updated[T](key: Any, oldValue: T, newValue: T) extends CqEvent[T]
+  case class Destroyed[T](key: Any, value: T) extends CqEvent[T]
 }
 
 // GeodeClient service trait
@@ -108,6 +125,20 @@ trait GeodeClientCache {
       query: String,
       params: Any*
   ): ZIO[Any, GeodeError, Chunk[T]]
+
+  /** Execute a continuous query and return a stream of events.
+    *
+    * @param query
+    *   the CQ query string
+    * @param params
+    *   parameters for the query
+    * @return
+    *   ZIO effect producing a stream of CQ events
+    */
+  def continuousQuery[T](
+      query: String,
+      params: Any*
+  ): ZIO[Scope, GeodeError, ZStream[Any, GeodeError, CqEvent[T]]]
 }
 
 private class GeodeClientCacheLive(
@@ -275,6 +306,75 @@ private class GeodeClientCacheLive(
         case th: Throwable =>
           GeodeError.QueryError(s"Query failed: ${th.getMessage}")
       }
+
+  override def continuousQuery[T](
+      query: String,
+      params: Any*
+  ): ZIO[Scope, GeodeError, ZStream[Any, GeodeError, CqEvent[T]]] =
+    ZIO
+      .acquireRelease {
+        for {
+          queue <- Queue.unbounded[CqEvent[T]]
+          cq <- ZIO
+            .attemptBlocking {
+              val queryService = clientCache.getQueryService()
+              val listener = new CqListener {
+                override def onEvent(event: GeodeCqEvent): Unit = {
+                  val entryEvent = event.asInstanceOf[EntryEvent[Any, Any]]
+                  val op = entryEvent.getOperation
+                  val ourEvent = op match {
+                    case Operation.CREATE =>
+                      CqEvent.Created(
+                        entryEvent.getKey,
+                        entryEvent.getNewValue.asInstanceOf[T]
+                      )
+                    case Operation.UPDATE =>
+                      CqEvent.Updated(
+                        entryEvent.getKey,
+                        entryEvent.getOldValue.asInstanceOf[T],
+                        entryEvent.getNewValue.asInstanceOf[T]
+                      )
+                    case Operation.DESTROY =>
+                      CqEvent.Destroyed(
+                        entryEvent.getKey,
+                        entryEvent.getOldValue.asInstanceOf[T]
+                      )
+                    case _ => return
+                  }
+                  Unsafe.unsafe { implicit u =>
+                    Runtime.default.unsafe
+                      .run(queue.offer(ourEvent))
+                      .getOrThrow()
+                  }
+                }
+                override def onError(event: GeodeCqEvent): Unit = {
+                  // Log error - in real implementation, might want to offer error event
+                  println(s"CQ error: ${event}")
+                }
+                override def close(): Unit = {}
+              }
+              val attrs = new CqAttributesFactory()
+              attrs.addCqListener(listener)
+              val cqQuery =
+                queryService.newCq(
+                  s"cq-${java.lang.System.nanoTime()}",
+                  query,
+                  attrs.create()
+                )
+              cqQuery.executeWithInitialResults()
+              cqQuery
+            }
+            .mapError(th =>
+              GeodeError.QueryError(s"Failed to create CQ: ${th.getMessage}")
+            )
+        } yield (cq, queue)
+      } { case (cq, queue) =>
+        ZIO.attemptBlocking(cq.asInstanceOf[CqQuery].close()).orDie *>
+          queue.shutdown
+      }
+      .map { case (_, queue) =>
+        ZStream.fromQueue(queue)
+      }
 }
 
 // Companion object with layer creation
@@ -287,12 +387,14 @@ object GeodeClientCache {
     * @return
     *   ZLayer providing GeodeClientCacheLive
     */
-  def layer: ZLayer[Scope & ValidConfig, GeodeError, GeodeClientCacheLive] =
+  def layer(
+      subscription: Boolean = false
+  ): ZLayer[Scope & ValidConfig, GeodeError, GeodeClientCacheLive] =
     ZLayer:
       for {
         _ <- ZIO.logDebug("Creating GeodeClient layer")
         validConfig <- ZIO.service[ValidConfig]
-        clientCache <- createClientCache(validConfig)
+        clientCache <- createClientCache(validConfig, subscription)
         regionCache <- Ref.make(Map.empty[String, GeodeRegion[?, ?]])
         _ <- ZIO.addFinalizer(
           ZIO.attemptBlocking {
@@ -320,7 +422,9 @@ object GeodeClientCache {
     * @return
     *   ZLayer providing GeodeClientCacheLive singleton
     */
-  def singleton: ZLayer[ValidConfig, GeodeError, GeodeClientCacheLive] =
+  def singleton(
+      subsription: Boolean = false
+  ): ZLayer[ValidConfig, GeodeError, GeodeClientCacheLive] =
     ZLayer:
       for {
         _ <- ZIO.logDebug("Creating GeodeClient layer")
@@ -331,7 +435,7 @@ object GeodeClientCache {
           case None =>
             ZIO.logDebug("Creating new singleton GeodeClientLive") *> (for {
               validConfig <- ZIO.service[ValidConfig]
-              clientCache <- createClientCache(validConfig)
+              clientCache <- createClientCache(validConfig, subsription)
               regionCache <- Ref.make(Map.empty[String, GeodeRegion[?, ?]])
               clientLive = new GeodeClientCacheLive(clientCache)
               _ <- singletonClientCache.set(Some(clientLive))
@@ -345,57 +449,64 @@ object GeodeClientCache {
       } yield geodeClientCache
 
   private def createClientCache(
-      validConfig: ValidConfig
+      validConfig: ValidConfig,
+      subscription: Boolean
   ): ZIO[Any, GeodeError, ClientCache] =
-    ZIO
-      .attemptBlocking {
-        val factory = new ClientCacheFactory()
+    ZIO.debug(
+      s"######### Creating Geode ClientCache with subscription=$subscription"
+    ) *>
+      ZIO
+        .attemptBlocking {
+          val factory = new ClientCacheFactory()
+          if (subscription) {
+            factory.setPoolSubscriptionEnabled(true)
+          }
 
-        // Configure locators
-        validConfig.config.locators.foreach { locator =>
-          factory.addPoolLocator(locator.host, locator.port)
+          // Configure locators
+          validConfig.config.locators.foreach { locator =>
+            factory.addPoolLocator(locator.host, locator.port)
+          }
+
+          // Configure pool settings
+          factory.setPoolMinConnections(validConfig.config.pool.minConnections)
+          factory.setPoolMaxConnections(validConfig.config.pool.maxConnections)
+
+          // Configure authentication
+          validConfig.config.auth.foreach { auth =>
+            factory.set("security-username", auth.username)
+            factory.set("security-password", auth.password)
+          }
+
+          // Configure SSL if enabled
+          if (validConfig.config.ssl.enabled) {
+            configureSSL(factory, validConfig.config.ssl)
+          }
+
+          // Create the client cache
+          factory.create()
         }
-
-        // Configure pool settings
-        factory.setPoolMinConnections(validConfig.config.pool.minConnections)
-        factory.setPoolMaxConnections(validConfig.config.pool.maxConnections)
-
-        // Configure authentication
-        validConfig.config.auth.foreach { auth =>
-          factory.set("security-username", auth.username)
-          factory.set("security-password", auth.password)
+        .mapError {
+          case e: org.apache.geode.security.AuthenticationFailedException =>
+            GeodeError.AuthenticationFailed(
+              s"Authentication failed: ${e.getMessage}"
+            )
+          case e: org.apache.geode.cache.client.ServerOperationException
+              if e.getCause != null && e.getCause.getMessage.contains("SSL") =>
+            GeodeError.SslError(s"SSL handshake failed: ${e.getMessage}")
+          case e: java.net.ConnectException =>
+            GeodeError.ConnectionError(
+              s"Failed to connect to locators: ${e.getMessage}"
+            )
+          case e: IllegalArgumentException =>
+            GeodeError.ConnectionError(
+              s"Invalid locator configuration: ${e.getMessage}"
+            )
+          case e: Exception =>
+            GeodeError.GenericError(
+              s"Failed to create client cache: ${e.getMessage}",
+              e
+            )
         }
-
-        // Configure SSL if enabled
-        if (validConfig.config.ssl.enabled) {
-          configureSSL(factory, validConfig.config.ssl)
-        }
-
-        // Create the client cache
-        factory.create()
-      }
-      .mapError {
-        case e: org.apache.geode.security.AuthenticationFailedException =>
-          GeodeError.AuthenticationFailed(
-            s"Authentication failed: ${e.getMessage}"
-          )
-        case e: org.apache.geode.cache.client.ServerOperationException
-            if e.getCause != null && e.getCause.getMessage.contains("SSL") =>
-          GeodeError.SslError(s"SSL handshake failed: ${e.getMessage}")
-        case e: java.net.ConnectException =>
-          GeodeError.ConnectionError(
-            s"Failed to connect to locators: ${e.getMessage}"
-          )
-        case e: IllegalArgumentException =>
-          GeodeError.ConnectionError(
-            s"Invalid locator configuration: ${e.getMessage}"
-          )
-        case e: Exception =>
-          GeodeError.GenericError(
-            s"Failed to create client cache: ${e.getMessage}",
-            e
-          )
-      }
 
   private def configureSSL(
       factory: ClientCacheFactory,
