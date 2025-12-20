@@ -54,7 +54,7 @@ object GeodeClientConnectedSpecSpec2 extends ZIOSpecDefault {
     .provide(
       Scope.default,
       ZLayer.succeed(validConfig),
-      GeodeClientCache.layer()
+      GeodeClientCache.layer(true)
     ) @@ sequential
 
 }

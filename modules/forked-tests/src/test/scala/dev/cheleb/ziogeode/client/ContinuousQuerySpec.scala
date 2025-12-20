@@ -8,6 +8,10 @@ import dev.cheleb.ziogeode.config._
 import dev.cheleb.ziogeode.region.GeodeRegion
 import org.apache.geode.cache.client.ClientRegionShortcut
 
+/** Regions must exists !
+  *
+  * see scripts/test-setup.sh
+  */
 object ContinuousQuerySpec extends ZIOSpecDefault {
 
   private val validConfig = ValidConfig(
@@ -29,32 +33,39 @@ object ContinuousQuerySpec extends ZIOSpecDefault {
               "test-region",
               ClientRegionShortcut.CACHING_PROXY
             )
-            stream <- client.continuousQuery[String](
+            stream = client.continuousQuery[String](
               "SELECT * FROM /test-region"
             )
 
-            _ <- (ZIO.debug("Put") *> ZIO.sleep(2.second) *> ZIO.debug(
+            _ <- ZIO.debug(stream.toString())
+
+            _ <- (ZIO.sleep(2.second) *> ZIO.debug(
               "Put"
             ) *> region.put(
-              "key1",
-              "value1"
+              "key3",
+              "value3"
+            ) *> region.put(
+              "key4",
+              "value4"
             )).fork
-            events <- ZIO.debug("Listen") *> stream.take(1).runCollect
-          } yield assert(events)(hasSize(equalTo(1)))
+            events <- ZIO.debug("Listen") *> stream
+              .take(4)
+              .tap(e => ZIO.debug(e.toString()))
+              .runCollect
+          } yield assert(events)(hasSize(equalTo(4)))
         }
       }
-    ),
+    ) @@ withLiveClock,
     suite("Edge Cases")(
       test("Invalid CQ query fails") {
         ZIO.scoped {
           for {
             client <- ZIO.service[GeodeClientCache]
-            result <- client.continuousQuery[String]("INVALID QUERY").exit
-          } yield assert(result)(
-            fails(isSubtype[GeodeError.QueryError](anything))
-          )
+            result = client.continuousQuery[String]("INVALID QUERY")
+            e <- result.take(1).runCollect.either
+          } yield assert(e)(isLeft)
         }
-      } @@ ignore,
+      },
       test("Concurrent CQs work") {
         ZIO.scoped {
           for {
@@ -63,10 +74,10 @@ object ContinuousQuerySpec extends ZIOSpecDefault {
               "test-region2",
               ClientRegionShortcut.CACHING_PROXY
             )
-            stream1 <- client.continuousQuery[String](
+            stream1 = client.continuousQuery[String](
               "SELECT * FROM /test-region2"
             )
-            stream2 <- client.continuousQuery[String](
+            stream2 = client.continuousQuery[String](
               "SELECT * FROM /test-region2"
             )
             fiber1 <- stream1.take(1).runCollect.fork
@@ -78,7 +89,7 @@ object ContinuousQuerySpec extends ZIOSpecDefault {
             assert(events2)(hasSize(equalTo(1)))
         }
       }
-    ) @@ ignore,
+    ),
     suite("Lifecycle")(
       test("CQ unregistered on stream close") {
         ZIO.scoped {
@@ -86,9 +97,9 @@ object ContinuousQuerySpec extends ZIOSpecDefault {
             client <- ZIO.service[GeodeClientCache]
             region <- client.createRegion[String, String](
               "test-region3",
-              ClientRegionShortcut.CACHING_PROXY
+              ClientRegionShortcut.CACHING_PROXY_OVERFLOW
             )
-            stream <- client.continuousQuery[String](
+            stream = client.continuousQuery[String](
               "SELECT * FROM /test-region3"
             )
             _ <- region.put("key1", "value1")

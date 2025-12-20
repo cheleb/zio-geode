@@ -44,8 +44,10 @@ lazy val forkedTests = coreProject("zio-geode-forked-tests", "forked-tests")
       "dev.zio" %% "zio-test" % "2.1.22" % Test,
       "dev.zio" %% "zio-test-sbt" % "2.1.23" % Test
     ),
-    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
-    //   Test / fork := true
+    testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
+    Test / fork := true,
+    Test / testForkedParallel := true,
+    Test / parallelExecution := false
   )
 
 def coreProject(projectId: String, folder: String) =

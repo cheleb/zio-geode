@@ -24,7 +24,8 @@ object GeodeClientSpec extends ZIOSpecDefault {
       val effect = ZIO
         .service[GeodeClientCache]
         .provide(
-          ZLayer.succeed(invalidConfig) >>> GeodeClientCache.singleton()
+          Scope.default,
+          ZLayer.succeed(invalidConfig) >>> GeodeClientCache.layer()
         )
 
       // // val effect = ZIO.fail(new Exception("mock"))

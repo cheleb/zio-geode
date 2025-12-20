@@ -23,6 +23,10 @@ import org.apache.geode.cache.query.{
   CqAttributesFactory
 }
 import org.apache.geode.cache.{EntryEvent, Operation}
+import org.apache.geode.cache.util.CqListenerAdapter
+import scala.util.Try
+import scala.util.Failure
+import scala.util.Success
 
 // Error types for Geode operations
 sealed trait GeodeError
@@ -42,9 +46,11 @@ object GeodeError {
 // CQ Event types
 sealed trait CqEvent[T]
 object CqEvent {
+  case class Old[T](value: T) extends CqEvent[T]
   case class Created[T](key: Any, value: T) extends CqEvent[T]
   case class Updated[T](key: Any, oldValue: T, newValue: T) extends CqEvent[T]
-  case class Destroyed[T](key: Any, value: T) extends CqEvent[T]
+  case class Destroyed[T](key: Any) extends CqEvent[T]
+  case class Error[T](throable: Throwable) extends CqEvent[T]
 }
 
 // GeodeClient service trait
@@ -133,12 +139,13 @@ trait GeodeClientCache {
     * @param params
     *   parameters for the query
     * @return
-    *   ZIO effect producing a stream of CQ events
+    *   ZStream of CQ events
     */
+
   def continuousQuery[T](
       query: String,
       params: Any*
-  ): ZIO[Scope, GeodeError, ZStream[Any, GeodeError, CqEvent[T]]]
+  ): ZStream[Any, GeodeError, CqEvent[T]]
 }
 
 private class GeodeClientCacheLive(
@@ -307,74 +314,66 @@ private class GeodeClientCacheLive(
           GeodeError.QueryError(s"Query failed: ${th.getMessage}")
       }
 
-  override def continuousQuery[T](
+  def convert[T](event: GeodeCqEvent): CqEvent[T] =
+    event.getNewValue() match
+      case null => CqEvent.Destroyed(event.getKey())
+      case o    => CqEvent.Created(event.getKey(), o.asInstanceOf[T])
+
+  def continuousQuery[T](
       query: String,
       params: Any*
-  ): ZIO[Scope, GeodeError, ZStream[Any, GeodeError, CqEvent[T]]] =
-    ZIO
-      .acquireRelease {
-        for {
-          queue <- Queue.unbounded[CqEvent[T]]
-          cq <- ZIO
-            .attemptBlocking {
-              val queryService = clientCache.getQueryService()
-              val listener = new CqListener {
-                override def onEvent(event: GeodeCqEvent): Unit = {
-                  val entryEvent = event.asInstanceOf[EntryEvent[Any, Any]]
-                  val op = entryEvent.getOperation
-                  val ourEvent = op match {
-                    case Operation.CREATE =>
-                      CqEvent.Created(
-                        entryEvent.getKey,
-                        entryEvent.getNewValue.asInstanceOf[T]
-                      )
-                    case Operation.UPDATE =>
-                      CqEvent.Updated(
-                        entryEvent.getKey,
-                        entryEvent.getOldValue.asInstanceOf[T],
-                        entryEvent.getNewValue.asInstanceOf[T]
-                      )
-                    case Operation.DESTROY =>
-                      CqEvent.Destroyed(
-                        entryEvent.getKey,
-                        entryEvent.getOldValue.asInstanceOf[T]
-                      )
-                    case _ => return
-                  }
-                  Unsafe.unsafe { implicit u =>
-                    Runtime.default.unsafe
-                      .run(queue.offer(ourEvent))
-                      .getOrThrow()
-                  }
-                }
-                override def onError(event: GeodeCqEvent): Unit = {
-                  // Log error - in real implementation, might want to offer error event
-                  println(s"CQ error: ${event}")
-                }
-                override def close(): Unit = {}
-              }
-              val attrs = new CqAttributesFactory()
-              attrs.addCqListener(listener)
-              val cqQuery =
-                queryService.newCq(
-                  s"cq-${java.lang.System.nanoTime()}",
-                  query,
-                  attrs.create()
-                )
-              cqQuery.executeWithInitialResults()
-              cqQuery
-            }
-            .mapError(th =>
-              GeodeError.QueryError(s"Failed to create CQ: ${th.getMessage}")
+  ): ZStream[Any, GeodeError, CqEvent[T]] = {
+    val queryService = clientCache.getQueryService()
+
+    ZStream.asyncScoped { cb =>
+      val listener = new CqListenerAdapter {
+        override def onEvent(event: GeodeCqEvent): Unit = {
+          val e = convert[T](event)
+          cb(ZIO.succeed(Chunk(e)))
+        }
+        override def onError(event: GeodeCqEvent): Unit = {
+          // Log error - in real implementation, might want to offer error event
+          println(s"CQ error: ${event}")
+          cb(ZIO.succeed(Chunk(CqEvent.Error(event.getThrowable()))))
+        }
+        override def close(): Unit = ()
+      }
+
+      val attrs = new CqAttributesFactory()
+      attrs.addCqListener(listener)
+
+      Try(
+        queryService.newCq(
+          s"cq-${java.lang.System.nanoTime()}",
+          query,
+          attrs.create()
+        )
+      ) match
+        case Failure(exception) =>
+          ZIO.fail(GeodeError.QueryError(exception.getMessage()))
+
+        case Success(cqQuery) =>
+
+          val result = cqQuery.executeWithInitialResults[T]()
+          cb(
+            ZIO.succeed(
+              Chunk.fromIterable(
+                result.asScala
+                  .map(e => CqEvent.Old(e))
+              )
             )
-        } yield (cq, queue)
-      } { case (cq, queue) =>
-        ZIO.attemptBlocking(cq.asInstanceOf[CqQuery].close()).orDie *>
-          queue.shutdown
-      }
-      .map { case (_, queue) =>
-        ZStream.fromQueue(queue)
-      }
+          )
+
+          ZIO.unit.withFinalizer(a =>
+            ZIO
+              .logDebug("Closing cq") *> ZIO
+              .attemptBlocking(cqQuery.close())
+              .ignore
+          )
+
+    }
+  }
+
 }
 
 // Companion object with layer creation
@@ -441,7 +440,7 @@ object GeodeClientCache {
               _ <- singletonClientCache.set(Some(clientLive))
 
               _ = sys.addShutdownHook: // Ensure cleanup on JVM shutdown
-                println("Shutting down GeodeClientCache singleton...")
+                println("#### Shutting down GeodeClientCache singleton...")
                 clientCache.close()
 
             } yield clientLive)
