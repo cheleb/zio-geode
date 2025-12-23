@@ -25,7 +25,7 @@ lazy val core = coreProject("zio-geode", "core")
       "org.apache.geode" % "geode-core" % "1.15.2",
       "org.apache.geode" % "geode-cq" % "1.15.2",
       "org.slf4j" % "log4j-over-slf4j" % "2.0.17" % Test,
-      "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
+      "org.apache.logging.log4j" % "log4j-core" % "2.25.3" % Test,
       "ch.qos.logback" % "logback-classic" % "1.5.23" % Test,
       "dev.zio" %% "zio-test" % "2.1.22" % Test,
       "dev.zio" %% "zio-test-sbt" % "2.1.23" % Test
@@ -39,7 +39,7 @@ lazy val forkedTests = coreProject("zio-geode-forked-tests", "forked-tests")
   .settings(
     libraryDependencies ++= Seq(
       "org.slf4j" % "log4j-over-slf4j" % "2.0.17" % Test,
-      "org.apache.logging.log4j" % "log4j-core" % "2.25.2" % Test,
+      "org.apache.logging.log4j" % "log4j-core" % "2.25.3" % Test,
       "ch.qos.logback" % "logback-classic" % "1.5.23" % Test,
       "dev.zio" %% "zio-test" % "2.1.22" % Test,
       "dev.zio" %% "zio-test-sbt" % "2.1.23" % Test
