@@ -1,6 +1,6 @@
 import sbt.TestFramework
 
-val scala3Version = "3.8.1"
+val scala3Version = "3.8.2"
 
 inThisBuild(
   Seq(
