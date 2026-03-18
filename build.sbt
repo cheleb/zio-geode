@@ -20,7 +20,7 @@ lazy val core = coreProject("zio-geode", "core")
       "dev.zio" %% "zio" % "2.1.24",
       "dev.zio" %% "zio-streams" % "2.1.24",
       "dev.zio" %% "zio-config" % "4.0.7",
-      "dev.zio" %% "zio-config-magnolia" % "4.0.6",
+      "dev.zio" %% "zio-config-magnolia" % "4.0.7",
       "dev.zio" %% "zio-config-typesafe" % "4.0.6",
       "org.apache.geode" % "geode-core" % "1.15.2",
       "org.apache.geode" % "geode-cq" % "1.15.2",
