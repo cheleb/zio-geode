@@ -22,7 +22,7 @@ lazy val core = coreProject("zio-geode", "core")
       "dev.zio" %% "zio-config" % "4.1.0",
       "dev.zio" %% "zio-config-magnolia" % "4.1.0",
       "dev.zio" %% "zio-config-typesafe" % "4.1.0",
-      "org.apache.geode" % "geode-core" % "1.15.5",
+      "org.apache.geode" % "geode-core" % "2.0.3",
       "org.apache.geode" % "geode-cq" % "1.15.5",
       "org.slf4j" % "log4j-over-slf4j" % "2.0.20" % Test,
       "org.apache.logging.log4j" % "log4j-core" % "2.26.1" % Test,
