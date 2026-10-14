@@ -18,7 +18,7 @@ lazy val core = coreProject("zio-geode", "core")
   .settings(
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % "2.1.27",
-      "dev.zio" %% "zio-streams" % "2.1.26",
+      "dev.zio" %% "zio-streams" % "2.1.27",
       "dev.zio" %% "zio-config" % "4.1.0",
       "dev.zio" %% "zio-config-magnolia" % "4.1.0",
       "dev.zio" %% "zio-config-typesafe" % "4.1.0",
