@@ -28,7 +28,7 @@ lazy val core = coreProject("zio-geode", "core")
       "org.apache.logging.log4j" % "log4j-core" % "2.26.1" % Test,
       "ch.qos.logback" % "logback-classic" % "1.6.5" % Test,
       "dev.zio" %% "zio-test" % "2.1.27" % Test,
-      "dev.zio" %% "zio-test-sbt" % "2.1.26" % Test
+      "dev.zio" %% "zio-test-sbt" % "2.1.27" % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     Test / fork := true
@@ -42,7 +42,7 @@ lazy val forkedTests = coreProject("zio-geode-forked-tests", "forked-tests")
       "org.apache.logging.log4j" % "log4j-core" % "2.26.1" % Test,
       "ch.qos.logback" % "logback-classic" % "1.6.5" % Test,
       "dev.zio" %% "zio-test" % "2.1.27" % Test,
-      "dev.zio" %% "zio-test-sbt" % "2.1.26" % Test
+      "dev.zio" %% "zio-test-sbt" % "2.1.27" % Test
     ),
     testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"),
     Test / fork := true,
